@@ -10,6 +10,10 @@ import shutil
 import sys
 import tempfile
 import zipfile
+import os
+from pathlib import Path
+
+from PIL import Image
 from html import escape
 
 SRC, DST = sys.argv[1], sys.argv[2]
@@ -71,15 +75,17 @@ TEXT = [
      "Карта в формате А1 содержит этапы и шаги путешествия и пять категорий"),
 ]
 
-# содержание: после добавления шага и строк в таблицы текст сдвинулся на страницу
+# содержание: новый шаг, строки таблиц и рисунок 1 сдвинули текст на две страницы
 TEXT += [
     ("1.3 Карта пути пользователя\t5", "1.3 Карта пути пользователя\t6"),
     ("2 Требования к приложению\t8", "2 Требования к приложению\t9"),
     ("2.1 Пользовательские требования\t8", "2.1 Пользовательские требования\t9"),
-    ("2.2 Функциональные требования\t8", "2.2 Функциональные требования\t9"),
+    ("2.2 Функциональные требования\t8", "2.2 Функциональные требования\t10"),
+    ("2.3 Нефункциональные требования\t11", "2.3 Нефункциональные требования\t12"),
     ("2.4 Системные требования\t11", "2.4 Системные требования\t12"),
-    ("Заключение\t13", "Заключение\t14"),
-    ("«Андрей Соколов»\t14", "«Андрей Соколов»\t15"),
+    ("2.5 Связь требований\t12", "2.5 Связь требований\t13"),
+    ("Заключение\t13", "Заключение\t15"),
+    ("«Андрей Соколов»\t14", "«Андрей Соколов»\t16"),
 ]
 
 # ---------------------------------------------------------------- таблицы
@@ -212,6 +218,60 @@ def para_with_lines(s, marker):
     return s[:a] + out + s[b:]
 
 
+# ---------------------------------------------------------------- рисунок 1
+FIG_PNG = Path(__file__).parent / "Карта_требований.png"
+FIG_AFTER = "без оговорок о том, что функция появится при определённых условиях."
+BODY_RPR = ('<w:rPr><w:rFonts w:ascii="Times New Roman" w:cs="Times New Roman" w:eastAsia="Times New Roman" '
+            'w:hAnsi="Times New Roman"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>')
+
+
+def add_figure(s, tmp):
+    """Карта требований после вводного абзаца раздела 2."""
+    os.makedirs(f"{tmp}/word/media", exist_ok=True)
+    shutil.copy(FIG_PNG, f"{tmp}/word/media/reqmap.png")
+    rels = f"{tmp}/word/_rels/document.xml.rels"
+    r = open(rels, encoding="utf-8").read()
+    r = r.replace("</Relationships>", '<Relationship Id="rIdReqMap" '
+                  'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
+                  'Target="media/reqmap.png"/></Relationships>')
+    open(rels, "w", encoding="utf-8").write(r)
+    ct = f"{tmp}/[Content_Types].xml"
+    c = open(ct, encoding="utf-8").read()
+    if 'Extension="png"' not in c:
+        c = c.replace("<Types ", "<Types ", 1).replace(
+            "<Default ", '<Default Extension="png" ContentType="image/png"/><Default ', 1)
+        open(ct, "w", encoding="utf-8").write(c)
+
+    w, h = Image.open(FIG_PNG).size
+    cx = 6120000
+    cy = cx * h // w
+    drawing = (
+        '<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" '
+        'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">'
+        f'<wp:extent cx="{cx}" cy="{cy}"/><wp:docPr id="1001" name="Карта требований"/>'
+        '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        '<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+        '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+        '<pic:nvPicPr><pic:cNvPr id="1001" name="reqmap.png"/><pic:cNvPicPr/></pic:nvPicPr>'
+        '<pic:blipFill><a:blip r:embed="rIdReqMap" '
+        'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/>'
+        '<a:stretch><a:fillRect/></a:stretch></pic:blipFill>'
+        f'<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{cx}" cy="{cy}"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic>'
+        '</wp:inline></w:drawing>')
+    fig = (
+        '<w:p><w:pPr><w:keepNext/><w:spacing w:after="0" w:before="240" w:line="240" w:lineRule="auto"/>'
+        f'<w:jc w:val="center"/></w:pPr><w:r>{drawing}</w:r></w:p>'
+        '<w:p><w:pPr><w:spacing w:after="240" w:before="120" w:line="360" w:lineRule="auto"/><w:jc w:val="center"/></w:pPr>'
+        f'<w:r>{BODY_RPR}<w:t xml:space="preserve">Рисунок 1 – Карта требований к приложению «Ключ»</w:t></w:r></w:p>')
+
+    assert s.count(FIG_AFTER) == 1
+    s = s.replace(FIG_AFTER, FIG_AFTER + " Все требования сведены в карту требований на рисунке 1.")
+    i = s.index(FIG_AFTER)
+    end = s.index("</w:p>", i) + len("</w:p>")
+    return s[:end] + fig + s[end:]
+
+
 with tempfile.TemporaryDirectory() as tmp:
     with zipfile.ZipFile(SRC) as z:
         z.extractall(tmp)
@@ -230,6 +290,10 @@ with tempfile.TemporaryDirectory() as tmp:
     s = replace_table_after(s, "Таблица 1 – Шаги пути пользователя", table1())
     s = replace_table_after(s, "Таблица 2 – Рекомендации", table2(widths2))
     s = s.replace("Таблица 1 – Шаги пути пользователя", "Таблица 1 – Этапы и шаги пути пользователя")
+
+    s = add_figure(s, tmp)
+    if "word/media/reqmap.png" not in names:
+        names.append("word/media/reqmap.png")
 
     open(path, "w", encoding="utf-8").write(s)
     with zipfile.ZipFile(DST, "w", zipfile.ZIP_DEFLATED) as z:

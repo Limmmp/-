@@ -376,7 +376,7 @@ def li(items):
 def build(filled: bool) -> str:
     h = []
     if filled:
-        h.append('<div class="pnum">15</div>')
+        h.append('<div class="pnum">16</div>')
         h.append('<div class="cap-top">Приложение А<br>User Journey Map персоны «Андрей Соколов»</div>')
     else:
         h.append('<div class="cap-top">User Journey Map персоны «Андрей Соколов» – шаблон для заполнения</div>')
